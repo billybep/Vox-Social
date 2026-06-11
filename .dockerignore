@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.idea/
+.vscode/
+
+# Build artifacts
+server
+*.exe
+*.test
+*.out
+
+# Go cache
+vendor/
+go.work
+go.work.sum
