@@ -12,6 +12,7 @@ server
 .env.production
 .env.development
 .env.staging
+.env
 
 # OS specific files
 .DS_Store
