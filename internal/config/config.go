@@ -5,13 +5,13 @@ import (
 )
 
 type Config struct {
-	Port               string
-	DatabaseURL        string
-	AllowedOrigins     string
-	AIApiKey           string
-	AIApiEndpoint      string
-	AIModel            string
-	ScraperApiKey      string
+	Port                 string
+	DatabaseURL          string
+	AllowedOrigins       string
+	AIApiKey             string
+	AIApiEndpoint        string
+	AIModel              string
+	ScraperApiKey        string
 	ScraperInstaEndpoint string
 	ScraperFbEndpoint    string
 }
