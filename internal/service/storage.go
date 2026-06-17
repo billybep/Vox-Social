@@ -55,9 +55,9 @@ func (s *StorageService) SaveAuditAsync(targetURL string, result *model.AnalyzeR
 		query := `
 			INSERT INTO social_audits (
 				id, target_url, overall_score, status, profile_identity, 
-				growth_potential, profile_readiness, key_strengths, opportunities, checked_at
+				growth_potential, profile_readiness, key_strengths, opportunities, recommended_package, checked_at
 			) VALUES (
-				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 			)
 		`
 		
@@ -72,6 +72,7 @@ func (s *StorageService) SaveAuditAsync(targetURL string, result *model.AnalyzeR
 			result.ProfileReadiness,
 			result.KeyStrengths,
 			result.Opportunities,
+			result.RecommendedPackage,
 			time.Now(),
 		)
 

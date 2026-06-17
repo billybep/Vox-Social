@@ -30,8 +30,9 @@ func (m *mockAI) AnalyzeProfile(ctx context.Context, profileURL string) (*model.
 		return nil, context.DeadlineExceeded // Simulate a timeout or error
 	}
 	return &model.AnalyzeResponse{
-		OverallScore: 99,
-		Status:       "TEST",
+		OverallScore:       99,
+		Status:             "TEST",
+		RecommendedPackage: "Vox Value",
 	}, nil
 }
 

@@ -30,7 +30,14 @@ func main() {
 	defer storageSvc.Close()
 
 	// Initialize AI Service
-	aiSvc := service.NewAIService(cfg.AIApiKey, cfg.AIApiEndpoint)
+	aiSvc := service.NewAIService(
+		cfg.AIApiKey,
+		cfg.AIApiEndpoint,
+		cfg.AIModel,
+		cfg.ScraperApiKey,
+		cfg.ScraperInstaEndpoint,
+		cfg.ScraperFbEndpoint,
+	)
 
 	// Initialize Handlers
 	auditHandler := handler.NewAuditHandler(aiSvc, storageSvc)
@@ -38,7 +45,7 @@ func main() {
 	// Set up routing
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/analyze", corsMiddleware(auditHandler.HandleAnalyze, cfg.AllowedOrigins))
-	
+
 	// Health check for Railway
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -50,9 +57,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  15 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 150 * time.Second,
+		IdleTimeout:  180 * time.Second,
 	}
 
 	// Graceful Shutdown Channel
@@ -92,7 +99,7 @@ func corsMiddleware(next http.HandlerFunc, allowedOrigins string) http.HandlerFu
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		
+
 		// If origin is allowed, set CORS headers
 		if validOrigins[origin] || validOrigins["*"] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)

@@ -10,8 +10,12 @@ CREATE TABLE IF NOT EXISTS social_audits (
     profile_readiness INT NOT NULL,
     key_strengths TEXT[] NOT NULL,
     opportunities TEXT[] NOT NULL,
+    recommended_package VARCHAR(50) NOT NULL,
     checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Ensure existing databases get the new column
+ALTER TABLE social_audits ADD COLUMN IF NOT EXISTS recommended_package VARCHAR(50) NOT NULL DEFAULT 'Vox Value';
 
 -- Index for querying by URL if needed
 CREATE INDEX idx_social_audits_target_url ON social_audits(target_url);

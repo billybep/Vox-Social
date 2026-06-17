@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/voxlumedia/vox-social-backend/internal/model"
 )
@@ -53,12 +55,16 @@ func (h *AuditHandler) HandleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Mock/execute HTTP POST to AI API with 10-second context timeout (done in Service layer)
-	aiResult, err := h.aiService.AnalyzeProfile(r.Context(), req.ProfileURL)
+	// Use context.Background() so that client disconnection (e.g. Insomnia timeout)
+	// does NOT cancel the AI work. The 120s timeout is our own safety net.
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	aiResult, err := h.aiService.AnalyzeProfile(ctx, req.ProfileURL)
 	if err != nil {
+		log.Printf("ERROR analyzing profile: %v\n", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to analyze profile"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to analyze profile: " + err.Error()})
 		return
 	}
 
