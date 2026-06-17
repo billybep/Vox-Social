@@ -25,12 +25,7 @@ type AIService struct {
 }
 
 func NewAIService(aiKey, aiEndpoint, aiModel, scraperKey, instaEndpoint, fbEndpoint string) *AIService {
-	log.Printf("[INIT] AI Endpoint: %s", aiEndpoint)
-	log.Printf("[INIT] AI Model: %s", aiModel)
-	log.Printf("[INIT] Scraper Insta Endpoint: %s", instaEndpoint)
-	log.Printf("[INIT] Scraper FB Endpoint: %s", fbEndpoint)
-	log.Printf("[INIT] AI Key present: %v", aiKey != "")
-	log.Printf("[INIT] Scraper Key present: %v", scraperKey != "")
+	log.Printf("[INIT] AIService initialized")
 
 	return &AIService{
 		AIApiKey:             aiKey,
@@ -142,7 +137,6 @@ func (s *AIService) scrapeProfile(ctx context.Context, profileURL string) (strin
 	}
 
 	log.Printf("[SCRAPER] Success: received %d bytes", len(bodyBytes))
-	log.Printf("[SCRAPER] Raw Result:\n%s", string(bodyBytes))
 	return string(bodyBytes), nil
 }
 
@@ -249,7 +243,6 @@ CRITICAL RULE: For the 'recommended_package' field, you must evaluate their scor
 		}
 
 		rawContent := aiResp.Choices[0].Message.Content
-		log.Printf("[AI] Raw AI content: %s", rawContent[:min(200, len(rawContent))])
 
 		var result model.AnalyzeResponse
 		if err := json.Unmarshal([]byte(rawContent), &result); err != nil {
