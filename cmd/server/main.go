@@ -102,16 +102,14 @@ func corsMiddleware(next http.HandlerFunc, allowedOrigins string) http.HandlerFu
 		origin := r.Header.Get("Origin")
 		cleanOrigin := strings.TrimRight(origin, "/")
 
-		// If origin is allowed, set CORS headers
-		if validOrigins[cleanOrigin] || validOrigins["*"] {
-			if origin == "" {
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-			} else {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-			}
-			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
+		// Unconditionally allow origin for this public API
+		if origin == "" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
 
 		// Handle preflight request
 		if r.Method == http.MethodOptions {
