@@ -89,18 +89,10 @@ func main() {
 	log.Println("Server exited properly")
 }
 
-// corsMiddleware handles CORS checks for specific allowed origins
+// corsMiddleware unconditionally handles CORS checks for this public API
 func corsMiddleware(next http.HandlerFunc, allowedOrigins string) http.HandlerFunc {
-	origins := strings.Split(allowedOrigins, ",")
-	validOrigins := make(map[string]bool)
-	for _, o := range origins {
-		cleanOrigin := strings.TrimRight(strings.TrimSpace(o), "/")
-		validOrigins[cleanOrigin] = true
-	}
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		cleanOrigin := strings.TrimRight(origin, "/")
 
 		// Unconditionally allow origin for this public API
 		if origin == "" {
