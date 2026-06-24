@@ -56,10 +56,14 @@ func (s *AIService) AnalyzeProfile(ctx context.Context, profileURL string) (*mod
 	}
 	log.Printf("[ANALYZE] Step 1/2 OK: Scraper returned %d bytes in %v", len(scrapedText), time.Since(totalStart))
 
-	// 2. Send scraped data to AI
+	// 2. Optimize scraped data before sending to AI
+	optimizedText := optimizeScrapedData(scrapedText)
+	log.Printf("[ANALYZE] Optimization: reduced payload from %d to %d bytes", len(scrapedText), len(optimizedText))
+
+	// 3. Send scraped data to AI
 	aiStart := time.Now()
 	log.Printf("[ANALYZE] Step 2/2: Calling AI...")
-	result, err := s.callAI(ctx, scrapedText)
+	result, err := s.callAI(ctx, optimizedText)
 	if err != nil {
 		log.Printf("[ANALYZE] Step 2/2 FAILED after %v (AI took %v): %v", time.Since(totalStart), time.Since(aiStart), err)
 		return nil, err
@@ -92,8 +96,8 @@ func (s *AIService) scrapeProfile(ctx context.Context, profileURL string) (strin
 		}
 	} else {
 		payload = map[string]interface{}{
-			"directUrls": []string{profileURL},
-			"resultsType": "posts",
+			"directUrls":   []string{profileURL},
+			"resultsType":  "posts",
 			"resultsLimit": 12,
 		}
 	}
@@ -172,7 +176,19 @@ func (s *AIService) callAI(ctx context.Context, scrapedText string) (*model.Anal
   "opportunities": [array of 3 strings],
   "recommended_package": string
 }
-CRITICAL RULE: For the 'recommended_package' field, you must evaluate their score and strictly choose exactly ONE of the following options: 'Vox Value', 'Vox Snap', 'Vox Showcase', or 'Vox Premier'.`
+
+CRITICAL RULE FOR 'recommended_package': 
+You must evaluate the scraped profile data and choose exactly ONE package from the list below based strictly on which condition best matches the profile's current state. Output ONLY the exact package name:
+
+- 'VoxLite Social Media Management': Recommend when profile is inactive, very low post frequency, just getting started on social.
+- 'VoxBoost Social Media Management': Recommend when there is some posting activity but inconsistent — needs regular content calendar.
+- 'VoxGrowth Social Media Management': Recommend when posting regularly but engagement is low — needs strategy and growth focus.
+- 'VoxPro Social Media Management': Recommend when it is an established brand wanting full professional management across platforms.
+- 'VoxMax Social Media Management': Recommend when it is a high-volume brand, all platforms, maximum content output needed.
+- 'VOXCHAT AI Chat Automation': Recommend when DMs not automated, missing lead capture in comments or messages.
+- 'VOXVOICE AI Voice Automation': Recommend when there is no voice follow-up system, missing phone automation.
+- 'VOXREWARD Customer Loyalty Program': Recommend when no loyalty or retention program detected.
+- 'VOXWEB Website Design & Development': Recommend when there is no website link in bio or website is weak/non-existent.`
 
 	reqPayload := aiRequest{
 		Model: s.AIModel,
@@ -260,4 +276,86 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// optimizeScrapedData filters the raw Apify JSON output to keep only the fields relevant
+// for the AI audit, significantly reducing the payload size sent to the LLM.
+func optimizeScrapedData(rawJSON string) string {
+	var rawData []map[string]interface{}
+	if err := json.Unmarshal([]byte(rawJSON), &rawData); err != nil {
+		// If it fails to parse as array, maybe it's a single object (e.g. facebook page profile)
+		var singleObj map[string]interface{}
+		if err2 := json.Unmarshal([]byte(rawJSON), &singleObj); err2 == nil {
+			rawData = []map[string]interface{}{singleObj}
+		} else {
+			return rawJSON // Fallback to raw if parsing fails entirely
+		}
+	}
+
+	var optimized []map[string]interface{}
+
+	// Keys to keep that are relevant for AI analysis (includes bio, website, stats, captions)
+	keepKeys := []string{
+		"caption", "text", "message", "description",
+		"likesCount", "commentsCount", "shares", "reactions", "videoPlayCount", "viewsCount",
+		"timestamp", "date", "createdAt",
+		"type", "postType", "mediaType",
+		"ownerUsername", "username", "followersCount", "followsCount", "pageName", "likes", "followers",
+		"bio", "biography", "website", "externalUrl", "url",
+	}
+
+	for _, item := range rawData {
+		compactItem := make(map[string]interface{})
+		
+		// Recursively or just top-level? Apify usually puts bio/website at top-level or owner object.
+		// Let's flatten top-level and 1-level deep for owner info if it exists.
+		for k, v := range item {
+			if k == "owner" || k == "page" || k == "user" {
+				if subMap, ok := v.(map[string]interface{}); ok {
+					for subK, subV := range subMap {
+						if isKeyRelevant(subK, keepKeys) {
+							compactItem[subK] = truncateIfString(subV)
+						}
+					}
+				}
+			}
+			
+			if isKeyRelevant(k, keepKeys) {
+				compactItem[k] = truncateIfString(v)
+			}
+		}
+
+		if len(compactItem) > 0 {
+			optimized = append(optimized, compactItem)
+		}
+	}
+
+	if len(optimized) == 0 {
+		return rawJSON // Fallback if no known keys found
+	}
+
+	optBytes, err := json.Marshal(optimized)
+	if err != nil {
+		return rawJSON
+	}
+
+	return string(optBytes)
+}
+
+func isKeyRelevant(key string, keepKeys []string) bool {
+	for _, k := range keepKeys {
+		if strings.EqualFold(key, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func truncateIfString(v interface{}) interface{} {
+	if strVal, ok := v.(string); ok {
+		if len(strVal) > 600 {
+			return strVal[:600] + "..." // Truncate long captions to save tokens
+		}
+	}
+	return v
 }
