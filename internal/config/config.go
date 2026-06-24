@@ -20,7 +20,7 @@ func LoadConfig() *Config {
 	return &Config{
 		Port:                 getEnv("PORT", "8080"),
 		DatabaseURL:          getEnv("DATABASE_URL", "postgres://postgres:password@localhost:5432/vox_social?sslmode=disable"),
-		AllowedOrigins:       getEnv("ALLOWED_ORIGINS", "http://localhost:3000,https://vox-social.netlify.app"),
+		AllowedOrigins:       getEnv("ALLOWED_ORIGINS", "*"),
 		AIApiKey:             getEnv("AI_API_KEY", ""),
 		AIApiEndpoint:        getEnv("AI_API_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions"),
 		AIModel:              getEnv("AI_MODEL", "llama3-70b-8192"),
