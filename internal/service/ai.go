@@ -101,7 +101,7 @@ func (s *AIService) scrapeProfile(ctx context.Context, profileURL string) (strin
 			"resultsLimit": 12,
 		}
 	}
-	log.Printf("[SCRAPER] Payload: %+v", payload)
+
 	jsonBody, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
@@ -121,14 +121,14 @@ func (s *AIService) scrapeProfile(ctx context.Context, profileURL string) (strin
 	}
 
 	start := time.Now()
-	log.Printf("[SCRAPER] Sending request...")
+
 	resp, err := s.Client.Do(req)
 	if err != nil {
 		log.Printf("[SCRAPER] HTTP request failed after %v: %v", time.Since(start), err)
 		return "", fmt.Errorf("scraper HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	log.Printf("[SCRAPER] Got response: status=%d in %v", resp.StatusCode, time.Since(start))
+
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *AIService) scrapeProfile(ctx context.Context, profileURL string) (strin
 		return "", fmt.Errorf("scraper returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	log.Printf("[SCRAPER] Success: received %d bytes", len(bodyBytes))
+
 	return string(bodyBytes), nil
 }
 
