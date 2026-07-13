@@ -39,7 +39,7 @@ func TestAnalyzeProfile_Success(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	result, err := aiService.AnalyzeProfile(ctx, "https://twitter.com/test_user")
+	result, err := aiService.AnalyzeProfile(ctx, "https://instagram.com/test_user")
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
