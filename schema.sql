@@ -19,3 +19,12 @@ ALTER TABLE social_audits ADD COLUMN IF NOT EXISTS recommended_package VARCHAR(5
 
 -- Index for querying by URL if needed
 CREATE INDEX idx_social_audits_target_url ON social_audits(target_url);
+
+-- Users table for authentication
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT,
+    google_id VARCHAR(255) UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

@@ -9,6 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	firebase "firebase.google.com/go/v4"
+	"google.golang.org/api/option"
+
 	"github.com/voxlumedia/vox-social-backend/internal/config"
 	"github.com/voxlumedia/vox-social-backend/internal/handler"
 	"github.com/voxlumedia/vox-social-backend/internal/service"
@@ -28,7 +31,7 @@ func main() {
 	}
 	defer storageSvc.Close()
 
-	// Initialize AI Service
+	// ── Social Audit Service (existing) ───────────────────────────────────
 	aiSvc := service.NewAIService(
 		cfg.AIApiKey,
 		cfg.AIApiEndpoint,
@@ -37,15 +40,53 @@ func main() {
 		cfg.ScraperInstaEndpoint,
 		cfg.ScraperFbEndpoint,
 	)
-
-	// Initialize Handlers
 	auditHandler := handler.NewAuditHandler(aiSvc, storageSvc)
 
-	// Set up routing
+	// ── SEO Audit Service (new) ───────────────────────────────────────────
+	seoSvc := service.NewSEOService(service.SEOConfig{
+		PageSpeedAPIKey:    cfg.PageSpeedAPIKey,
+		AIApiKey:           cfg.AIApiKey,
+		AIApiEndpoint:      cfg.AIApiEndpoint,
+		AIModel:            cfg.AIModel,
+		GooglePlacesAPIKey: cfg.GooglePlacesAPIKey,
+		YelpAPIKey:         cfg.YelpAPIKey,
+		DataForSEOLogin:    cfg.DataForSEOLogin,
+		DataForSEOPassword: cfg.DataForSEOPassword,
+		MaxSitemapPages:    cfg.SEOMaxSitemapPages,
+		BrokenLinkLimit:    cfg.SEOBrokenLinkLimit,
+	}, storageSvc)
+	seoHandler := handler.NewSEOAuditHandler(seoSvc)
+
+	// ── Auth Service (Firebase) ───────────────────────────────────────────
+	// Since we only need to verify ID tokens, we can initialize without credentials.
+	opt := option.WithoutAuthentication()
+	firebaseApp, err := firebase.NewApp(ctx, &firebase.Config{ProjectID: cfg.FirebaseProjectID}, opt)
+	if err != nil {
+		log.Fatalf("error initializing app: %v\n", err)
+	}
+	firebaseAuthClient, err := firebaseApp.Auth(ctx)
+	if err != nil {
+		log.Fatalf("error getting Auth client: %v\n", err)
+	}
+
+	authMiddleware := handler.NewAuthMiddleware(firebaseAuthClient)
+	authHandler := handler.NewAuthHandler(storageSvc)
+
+	// ── Routes ────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
+
+	// Existing social audit
 	mux.HandleFunc("/api/v1/analyze", corsMiddleware(auditHandler.HandleAnalyze, cfg.AllowedOrigins))
 
-	// Health check for Railway
+	// SEO audit
+	mux.HandleFunc("/api/v1/seo/audit", corsMiddleware(seoHandler.HandleAudit, cfg.AllowedOrigins))
+	mux.HandleFunc("/api/v1/seo/audit/", corsMiddleware(seoHandler.HandleGetAudit, cfg.AllowedOrigins))
+	mux.HandleFunc("/api/v1/seo/domain/", corsMiddleware(seoHandler.HandleGetByDomain, cfg.AllowedOrigins))
+
+	// Auth routes (protected by Firebase token verification)
+	mux.HandleFunc("/api/v1/auth/sync", corsMiddleware(authMiddleware.RequireAuth(authHandler.HandleAuthSync), cfg.AllowedOrigins))
+
+	// Health check for Railway / uptime monitors
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -57,15 +98,14 @@ func main() {
 		Addr:         ":" + cfg.Port,
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 150 * time.Second,
+		WriteTimeout: 165 * time.Second, // slightly above max audit timeout
 		IdleTimeout:  180 * time.Second,
 	}
 
-	// Graceful Shutdown Channel
+	// Graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// Run server in a goroutine
 	go func() {
 		log.Printf("Server starting on port %s...", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -73,27 +113,20 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
 	<-stop
 	log.Println("Shutting down server gracefully...")
-
-	// Create a context with timeout for shutting down
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
-
 	log.Println("Server exited properly")
 }
 
-// corsMiddleware unconditionally handles CORS checks for this public API
+// corsMiddleware unconditionally handles CORS checks for this public API.
 func corsMiddleware(next http.HandlerFunc, allowedOrigins string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-
-		// Unconditionally allow origin for this public API
 		if origin == "" {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 		} else {
@@ -101,13 +134,10 @@ func corsMiddleware(next http.HandlerFunc, allowedOrigins string) http.HandlerFu
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
-
-		// Handle preflight request
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-
 		next(w, r)
 	}
 }
