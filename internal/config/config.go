@@ -13,6 +13,9 @@ type Config struct {
 	// Auth
 	FirebaseProjectID    string
 
+	// GoHighLevel Webhook
+	GHLWebhookURL        string
+
 	// Social audit (existing)
 	AIApiKey             string
 	AIApiEndpoint        string
@@ -39,6 +42,7 @@ func LoadConfig() *Config {
 		DatabaseURL:          getEnv("DATABASE_URL", "postgres://postgres:password@localhost:5432/vox_social?sslmode=disable"),
 		AllowedOrigins:       getEnv("ALLOWED_ORIGINS", "*"),
 		FirebaseProjectID:    getEnv("FIREBASE_PROJECT_ID", "your-firebase-project-id"),
+		GHLWebhookURL:        getEnv("GHL_WEBHOOK_URL", "https://services.leadconnectorhq.com/hooks/shJlWpQ5hR9KVOGwBp8E/webhook-trigger/d07f2ec2-119d-4d37-b460-210d58b31591"),
 		AIApiKey:             getEnv("AI_API_KEY", ""),
 		AIApiEndpoint:        getEnv("AI_API_ENDPOINT", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
 		AIModel:              getEnv("AI_MODEL", "gemini-2.5-flash-lite"),

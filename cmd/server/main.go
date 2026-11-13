@@ -72,6 +72,9 @@ func main() {
 	authMiddleware := handler.NewAuthMiddleware(firebaseAuthClient)
 	authHandler := handler.NewAuthHandler(storageSvc)
 
+	// ── GoHighLevel Webhook Handler ───────────────────────────────────────
+	ghlHandler := handler.NewGHLHandler(cfg.GHLWebhookURL)
+
 	// ── Routes ────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
 
@@ -85,6 +88,9 @@ func main() {
 
 	// Auth routes (protected by Firebase token verification)
 	mux.HandleFunc("/api/v1/auth/sync", corsMiddleware(authMiddleware.RequireAuth(authHandler.HandleAuthSync), cfg.AllowedOrigins))
+
+	// GHL webhook forwarding
+	mux.HandleFunc("/api/v1/ghl/forward", corsMiddleware(ghlHandler.HandleForwardToGHL, cfg.AllowedOrigins))
 
 	// Health check for Railway / uptime monitors
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
