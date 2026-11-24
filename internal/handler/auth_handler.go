@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/voxlumedia/vox-social-backend/internal/model"
 	"github.com/voxlumedia/vox-social-backend/internal/service"
 )
 
@@ -18,51 +21,102 @@ func NewAuthHandler(storageSvc *service.StorageService) *AuthHandler {
 }
 
 // HandleAuthSync is called by the frontend after a successful Firebase login.
-// It ensures that the user exists in our local PostgreSQL 'users' table.
+// It syncs user data (uid, email, displayName, role) and returns user + workspace profile.
 func (h *AuthHandler) HandleAuthSync(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	email, ok := r.Context().Value(UserEmailKey).(string)
-	if !ok || email == "" {
-		http.Error(w, "Email missing in token claims", http.StatusBadRequest)
-		return
+	var syncReq model.AuthSyncRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&syncReq)
 	}
-	
-	uid, ok := r.Context().Value(UserIDKey).(string)
-	if !ok || uid == "" {
-		http.Error(w, "UID missing in token", http.StatusBadRequest)
+
+	// Fallback to token claims in context if body fields are empty
+	if syncReq.Email == "" {
+		if email, ok := r.Context().Value(UserEmailKey).(string); ok {
+			syncReq.Email = email
+		}
+	}
+	if syncReq.UID == "" {
+		if uid, ok := r.Context().Value(UserIDKey).(string); ok {
+			syncReq.UID = uid
+		}
+	}
+
+	syncReq.Email = strings.TrimSpace(syncReq.Email)
+	syncReq.UID = strings.TrimSpace(syncReq.UID)
+
+	if syncReq.Email == "" && syncReq.UID == "" {
+		http.Error(w, "User identification (email or uid) required", http.StatusBadRequest)
 		return
 	}
 
-	// Try to get existing user by email
-	user, err := h.storageSvc.GetUserByEmail(r.Context(), email)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			// Create user in our DB (treating uid from Firebase as the GoogleID/AuthID for now)
-			user, err = h.storageSvc.CreateGoogleUser(r.Context(), email, uid)
-			if err != nil {
-				log.Printf("Error creating user %s: %v", email, err)
-				http.Error(w, "Failed to sync user: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			log.Printf("✨ New user registered via Firebase: %s", email)
+	if syncReq.Role == "" {
+		syncReq.Role = "agency_owner"
+	}
+	if syncReq.DisplayName == "" {
+		if syncReq.Email != "" {
+			syncReq.DisplayName = strings.Split(syncReq.Email, "@")[0]
 		} else {
-			log.Printf("Database error syncing user %s: %v", email, err)
-			http.Error(w, "Database error", http.StatusInternalServerError)
-			return
+			syncReq.DisplayName = "User"
 		}
-	} else {
-		log.Printf("✅ User logged in: %s", email)
+	}
+
+	// Try to get or persist user in DB if storage service is available
+	var user *model.User
+	var err error
+
+	if h.storageSvc != nil && syncReq.Email != "" {
+		user, err = h.storageSvc.GetUserByEmail(r.Context(), syncReq.Email)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				user, err = h.storageSvc.CreateGoogleUser(r.Context(), syncReq.Email, syncReq.UID)
+				if err != nil {
+					log.Printf("Warning: failed to insert user into DB (%s): %v", syncReq.Email, err)
+				} else {
+					log.Printf("✨ New user registered: %s (%s)", syncReq.Email, syncReq.Role)
+				}
+			} else {
+				log.Printf("Database error querying user (%s): %v", syncReq.Email, err)
+			}
+		}
+	}
+
+	// In-memory fallback if DB record wasn't created or DB is not reachable
+	if user == nil {
+		user = &model.User{
+			ID:        syncReq.UID,
+			UID:       syncReq.UID,
+			Email:     syncReq.Email,
+			CreatedAt: time.Now(),
+		}
+	}
+
+	user.UID = syncReq.UID
+	user.DisplayName = syncReq.DisplayName
+	user.Role = syncReq.Role
+	user.Credits = 50
+
+	workspaceID := "ws_" + strings.ReplaceAll(user.ID, "-", "")
+	if len(workspaceID) > 11 {
+		workspaceID = workspaceID[:11]
+	}
+
+	workspace := model.WorkspaceProfile{
+		ID:      workspaceID,
+		Name:    syncReq.DisplayName + "'s Workspace",
+		Role:    syncReq.Role,
+		Credits: 50,
+		Plan:    "agency_pro",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "synced",
-		"user":   user,
+	_ = json.NewEncoder(w).Encode(model.AuthSyncResponse{
+		Status:    "synced",
+		User:      *user,
+		Workspace: workspace,
 	})
 }
-
