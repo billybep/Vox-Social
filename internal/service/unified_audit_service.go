@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -121,6 +122,28 @@ func (s *UnifiedAuditService) CreateAudit(ctx context.Context, req model.AuditRu
 
 	s.jobs[auditID] = job
 
+	// Auto-save initial record in storage
+	if s.storageSvc != nil {
+		fullDataBytes, _ := json.Marshal(req)
+		brand := req.BrandName
+		if brand == "" {
+			brand = req.TargetDomain
+		}
+		s.storageSvc.SaveAuditRecordAsync(&model.AuditRecord{
+			ID:               auditID,
+			UserID:           userID,
+			AuditType:        "unified",
+			TargetDomain:     req.TargetDomain,
+			BrandName:        brand,
+			OverallScore:     0,
+			Status:           "running",
+			EvidenceCoverage: 92,
+			FullData:         fullDataBytes,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		})
+	}
+
 	// Launch background progress orchestrator
 	go s.orchestrateAudit(auditID)
 
@@ -204,7 +227,43 @@ func (s *UnifiedAuditService) orchestrateAudit(auditID string) {
 	job.overallStatus = "completed"
 	job.completedAt = &completedAt
 	job.result = s.buildUnifiedResult(job.request, auditID, job.startedAt, &completedAt)
+	resultCopy := job.result
 	job.mu.Unlock()
+
+	// Auto-save completed record in persistent storage
+	if s.storageSvc != nil && resultCopy != nil {
+		fullDataBytes, _ := json.Marshal(resultCopy)
+		brand := job.request.BrandName
+		if brand == "" {
+			brand = job.request.TargetDomain
+		}
+		seoScore := resultCopy.SEOScore
+		socialScore := resultCopy.SocialScore
+		userID := job.request.UserID
+		if userID == "" {
+			userID = "anonymous"
+		}
+		s.storageSvc.SaveAuditRecordAsync(&model.AuditRecord{
+			ID:               auditID,
+			UserID:           userID,
+			AuditType:        "unified",
+			TargetDomain:     job.request.TargetDomain,
+			BrandName:        brand,
+			OverallScore:     resultCopy.OverallScore,
+			SEOScore:         &seoScore,
+			SocialScore:      &socialScore,
+			Status:           "completed",
+			EvidenceCoverage: 92,
+			FullData:         fullDataBytes,
+			CreatedAt:        job.startedAt,
+			UpdatedAt:        completedAt,
+		})
+	}
+}
+
+// GetStorage returns the underlying storage service
+func (s *UnifiedAuditService) GetStorage() *StorageService {
+	return s.storageSvc
 }
 
 // GetStatus returns the current stage progression and overall status.

@@ -19,6 +19,7 @@ type SEOAuditRequest struct {
 	Location       string `json:"location,omitempty"`
 	Phone          string `json:"phone,omitempty"`
 	GBPUrl         string `json:"gbp_url,omitempty"`
+	UserID         string `json:"user_id,omitempty"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

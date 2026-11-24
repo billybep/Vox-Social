@@ -13,11 +13,16 @@ import (
 
 // Mock Storage
 type mockStorage struct {
-	savedURL string
+	savedURL    string
+	savedRecord *model.AuditRecord
 }
 
 func (m *mockStorage) SaveAuditAsync(targetURL string, result *model.AnalyzeResponse) {
 	m.savedURL = targetURL
+}
+
+func (m *mockStorage) SaveAuditRecordAsync(record *model.AuditRecord) {
+	m.savedRecord = record
 }
 
 // Mock AI Service

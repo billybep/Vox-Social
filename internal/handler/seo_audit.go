@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/voxlumedia/vox-social-backend/internal/model"
+	"github.com/voxlumedia/vox-social-backend/internal/service"
 )
 
 // SEOAuditService is the interface the handler depends on.
@@ -20,12 +21,13 @@ type SEOAuditService interface {
 
 // SEOAuditHandler handles all SEO audit HTTP routes.
 type SEOAuditHandler struct {
-	svc SEOAuditService
+	svc        SEOAuditService
+	storageSvc *service.StorageService
 }
 
 // NewSEOAuditHandler creates a new SEOAuditHandler.
-func NewSEOAuditHandler(svc SEOAuditService) *SEOAuditHandler {
-	return &SEOAuditHandler{svc: svc}
+func NewSEOAuditHandler(svc SEOAuditService, storageSvc *service.StorageService) *SEOAuditHandler {
+	return &SEOAuditHandler{svc: svc, storageSvc: storageSvc}
 }
 
 // HandleAudit serves POST /api/v1/seo/audit
@@ -73,6 +75,42 @@ func (h *SEOAuditHandler) HandleAudit(w http.ResponseWriter, r *http.Request) {
 	if resp != nil && resp.Breakdown != nil {
 		resp.Categories = resp.Breakdown
 	}
+
+	// Auto-save to persistent audit_records table
+	if h.storageSvc != nil && resp != nil {
+		userID := strings.TrimSpace(req.UserID)
+		if userID == "" {
+			userID = ExtractUserID(r)
+		}
+
+		brandName := strings.TrimSpace(req.BusinessName)
+		if brandName == "" {
+			brandName = req.Domain
+		}
+
+		seoScore := resp.OverallScore
+		overallScore := resp.OverallScore
+		fullDataBytes, _ := json.Marshal(resp)
+
+		record := &model.AuditRecord{
+			ID:               resp.ID.String(),
+			UserID:           userID,
+			AuditType:        "seo",
+			TargetDomain:     req.Domain,
+			BrandName:        brandName,
+			SocialAccount:    "",
+			OverallScore:     overallScore,
+			SEOScore:         &seoScore,
+			SocialScore:      nil,
+			Status:           "completed",
+			EvidenceCoverage: 92,
+			FullData:         fullDataBytes,
+			CreatedAt:        resp.GeneratedAt,
+			UpdatedAt:        time.Now(),
+		}
+		h.storageSvc.SaveAuditRecordAsync(record)
+	}
+
 	jsonOK(w, resp)
 }
 

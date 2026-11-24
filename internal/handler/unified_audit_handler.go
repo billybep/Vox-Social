@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/voxlumedia/vox-social-backend/internal/model"
 	"github.com/voxlumedia/vox-social-backend/internal/service"
@@ -32,10 +34,11 @@ func (h *UnifiedAuditHandler) HandleRunAudit(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	userID := ""
-	if uid, ok := r.Context().Value(UserIDKey).(string); ok {
-		userID = uid
+	userID := strings.TrimSpace(req.UserID)
+	if userID == "" {
+		userID = ExtractUserID(r)
 	}
+	req.UserID = userID
 
 	resp, err := h.svc.CreateAudit(r.Context(), req, userID)
 	if err != nil {
@@ -50,8 +53,143 @@ func (h *UnifiedAuditHandler) HandleRunAudit(w http.ResponseWriter, r *http.Requ
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// HandleGetHistory handles GET /api/v1/audits/history
+func (h *UnifiedAuditHandler) HandleGetHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := ExtractUserID(r)
+	auditType := strings.TrimSpace(r.URL.Query().Get("type"))
+	limit := 20
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	storage := h.svc.GetStorage()
+	var history []model.AuditRecordSummary
+	var err error
+	if storage != nil {
+		history, err = storage.GetAuditHistory(r.Context(), userID, auditType, limit)
+	}
+
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if history == nil {
+		history = []model.AuditRecordSummary{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(model.AuditHistoryResponse{
+		Success: true,
+		Data:    history,
+		Total:   len(history),
+	})
+}
+
+// HandleGetLatest handles GET /api/v1/audits/latest
+func (h *UnifiedAuditHandler) HandleGetLatest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := ExtractUserID(r)
+	storage := h.svc.GetStorage()
+	var latest *model.AuditRecord
+	var err error
+	if storage != nil {
+		latest, err = storage.GetLatestAudit(r.Context(), userID)
+	}
+
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(model.AuditLatestResponse{
+		Success: true,
+		Data:    latest,
+	})
+}
+
+// HandleGetAuditByID handles GET /api/v1/audits/:id
+func (h *UnifiedAuditHandler) HandleGetAuditByID(w http.ResponseWriter, r *http.Request, auditID string) {
+	storage := h.svc.GetStorage()
+	var record *model.AuditRecord
+	var err error
+
+	if storage != nil {
+		record, err = storage.GetAuditRecordByID(r.Context(), auditID)
+	}
+
+	// If not found in storage, check active in-memory unified audits
+	if record == nil {
+		if result, errUnified := h.svc.GetResults(auditID); errUnified == nil && result != nil {
+			fullDataBytes, _ := json.Marshal(result)
+			seoScore := result.SEOScore
+			socialScore := result.SocialScore
+			record = &model.AuditRecord{
+				ID:               auditID,
+				UserID:           ExtractUserID(r),
+				AuditType:        "unified",
+				TargetDomain:     result.TargetDomain,
+				BrandName:        result.BrandName,
+				OverallScore:     result.OverallScore,
+				SEOScore:         &seoScore,
+				SocialScore:      &socialScore,
+				Status:           result.OverallStatus,
+				EvidenceCoverage: 92,
+				FullData:         fullDataBytes,
+				CreatedAt:        result.StartedAt,
+				UpdatedAt:        time.Now(),
+			}
+			err = nil
+		}
+	}
+
+	if record == nil || err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(model.AuditDetailResponse{
+			Success: false,
+			Error:   "Audit record not found: " + auditID,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(model.AuditDetailResponse{
+		Success: true,
+		Data:    record,
+	})
+}
+
 // HandleAuditsRouter handles /api/v1/audits/ sub-paths:
 // - POST /api/v1/audits/run
+// - GET  /api/v1/audits/history
+// - GET  /api/v1/audits/latest
+// - GET  /api/v1/audits/:id
 // - GET  /api/v1/audits/:id/status
 // - POST /api/v1/audits/:id/retry-source
 // - GET  /api/v1/audits/:id/results
@@ -60,7 +198,7 @@ func (h *UnifiedAuditHandler) HandleAuditsRouter(w http.ResponseWriter, r *http.
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/audits")
 	path = strings.Trim(path, "/")
 
-	// GET /api/v1/audits
+	// GET /api/v1/audits (all audits list)
 	if path == "" {
 		if r.Method == http.MethodGet {
 			audits := h.svc.ListAudits()
@@ -82,11 +220,25 @@ func (h *UnifiedAuditHandler) HandleAuditsRouter(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Split remaining path: e.g. ["audit_run_123", "status"]
 	parts := strings.Split(path, "/")
-	if len(parts) < 2 {
-		http.Error(w, "Invalid audit route", http.StatusBadRequest)
-		return
+
+	// Single part routes: history, latest, or :id
+	if len(parts) == 1 {
+		switch parts[0] {
+		case "history":
+			h.HandleGetHistory(w, r)
+			return
+		case "latest":
+			h.HandleGetLatest(w, r)
+			return
+		default:
+			if r.Method == http.MethodGet {
+				h.HandleGetAuditByID(w, r, parts[0])
+				return
+			}
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 	}
 
 	auditID := parts[0]
