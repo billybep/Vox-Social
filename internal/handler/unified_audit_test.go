@@ -195,3 +195,117 @@ func TestUnifiedAuditWorkflow(t *testing.T) {
 		t.Fatalf("expected 200 OK for audits list, got %d: %s", wList.Code, wList.Body.String())
 	}
 }
+
+func TestAuditHistoryAndLatestEndpoints(t *testing.T) {
+	// Initialize in-memory storage service (pool == nil)
+	storageSvc := &service.StorageService{}
+	unifiedSvc := service.NewUnifiedAuditService(nil, nil, storageSvc)
+	unifiedHandler := NewUnifiedAuditHandler(unifiedSvc)
+
+	userID := "user@gmail.com"
+	seoScore := 84
+	socialScore := 82
+
+	// Seed 2 records
+	rec1 := &model.AuditRecord{
+		ID:               "audit-uuid-123",
+		UserID:           userID,
+		AuditType:        "unified",
+		TargetDomain:     "pixelbytecode.com",
+		BrandName:        "PixelByteCode",
+		SocialAccount:    "@pixelbytecode",
+		OverallScore:     79,
+		SEOScore:         &seoScore,
+		SocialScore:      &socialScore,
+		Status:           "completed",
+		EvidenceCoverage: 92,
+		FullData:         json.RawMessage(`{"mockKey":"mockVal"}`),
+	}
+	_ = storageSvc.SaveAuditRecord(nil, rec1)
+
+	rec2 := &model.AuditRecord{
+		ID:               "audit-uuid-456",
+		UserID:           userID,
+		AuditType:        "seo",
+		TargetDomain:     "pixelbytecode.com",
+		BrandName:        "PixelByteCode",
+		OverallScore:     84,
+		SEOScore:         &seoScore,
+		Status:           "completed",
+		EvidenceCoverage: 92,
+		FullData:         json.RawMessage(`{"seoKey":"seoVal"}`),
+	}
+	_ = storageSvc.SaveAuditRecord(nil, rec2)
+
+	// 1. GET /api/v1/audits/history
+	reqHistory := httptest.NewRequest(http.MethodGet, "/api/v1/audits/history?user_id="+userID, nil)
+	wHistory := httptest.NewRecorder()
+	unifiedHandler.HandleAuditsRouter(wHistory, reqHistory)
+
+	if wHistory.Code != http.StatusOK {
+		t.Fatalf("expected 200 for history, got %d: %s", wHistory.Code, wHistory.Body.String())
+	}
+
+	var histResp model.AuditHistoryResponse
+	if err := json.NewDecoder(wHistory.Body).Decode(&histResp); err != nil {
+		t.Fatalf("failed to decode history response: %v", err)
+	}
+	if !histResp.Success {
+		t.Errorf("expected success true in history response")
+	}
+	if histResp.Total != 2 {
+		t.Errorf("expected 2 records, got %d", histResp.Total)
+	}
+
+	// 2. GET /api/v1/audits/history with type filter
+	reqFilter := httptest.NewRequest(http.MethodGet, "/api/v1/audits/history?user_id="+userID+"&type=seo", nil)
+	wFilter := httptest.NewRecorder()
+	unifiedHandler.HandleAuditsRouter(wFilter, reqFilter)
+
+	var filterResp model.AuditHistoryResponse
+	_ = json.NewDecoder(wFilter.Body).Decode(&filterResp)
+	if filterResp.Total != 1 || filterResp.Data[0].AuditType != "seo" {
+		t.Errorf("expected 1 SEO record, got total %d", filterResp.Total)
+	}
+
+	// 3. GET /api/v1/audits/latest
+	reqLatest := httptest.NewRequest(http.MethodGet, "/api/v1/audits/latest?user_id="+userID, nil)
+	wLatest := httptest.NewRecorder()
+	unifiedHandler.HandleAuditsRouter(wLatest, reqLatest)
+
+	if wLatest.Code != http.StatusOK {
+		t.Fatalf("expected 200 for latest, got %d: %s", wLatest.Code, wLatest.Body.String())
+	}
+	var latestResp model.AuditLatestResponse
+	if err := json.NewDecoder(wLatest.Body).Decode(&latestResp); err != nil {
+		t.Fatalf("failed to decode latest response: %v", err)
+	}
+	if !latestResp.Success || latestResp.Data == nil {
+		t.Fatalf("expected latest audit data to be present")
+	}
+	if latestResp.Data.TargetDomain != "pixelbytecode.com" {
+		t.Errorf("expected domain pixelbytecode.com, got %s", latestResp.Data.TargetDomain)
+	}
+
+	// 4. GET /api/v1/audits/:id
+	reqDetail := httptest.NewRequest(http.MethodGet, "/api/v1/audits/audit-uuid-123", nil)
+	wDetail := httptest.NewRecorder()
+	unifiedHandler.HandleAuditsRouter(wDetail, reqDetail)
+
+	if wDetail.Code != http.StatusOK {
+		t.Fatalf("expected 200 for detail, got %d: %s", wDetail.Code, wDetail.Body.String())
+	}
+	var detailResp model.AuditDetailResponse
+	if err := json.NewDecoder(wDetail.Body).Decode(&detailResp); err != nil {
+		t.Fatalf("failed to decode detail response: %v", err)
+	}
+	if !detailResp.Success || detailResp.Data == nil {
+		t.Fatalf("expected detail data to be present")
+	}
+	if detailResp.Data.ID != "audit-uuid-123" {
+		t.Errorf("expected ID audit-uuid-123, got %s", detailResp.Data.ID)
+	}
+	if len(detailResp.Data.FullData) == 0 {
+		t.Errorf("expected full_data to be populated")
+	}
+}

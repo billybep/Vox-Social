@@ -55,7 +55,7 @@ func main() {
 		MaxSitemapPages:    cfg.SEOMaxSitemapPages,
 		BrokenLinkLimit:    cfg.SEOBrokenLinkLimit,
 	}, storageSvc)
-	seoHandler := handler.NewSEOAuditHandler(seoSvc)
+	seoHandler := handler.NewSEOAuditHandler(seoSvc, storageSvc)
 
 	// ── Auth Service (Firebase) ───────────────────────────────────────────
 	// Since we only need to verify ID tokens, we can initialize without credentials.
@@ -149,7 +149,7 @@ func corsMiddleware(next http.HandlerFunc, allowedOrigins string) http.HandlerFu
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With, X-User-Id, X-User-Email")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)

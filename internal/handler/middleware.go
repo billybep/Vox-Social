@@ -14,6 +14,35 @@ type AuthContextKey string
 const UserIDKey AuthContextKey = "user_id"
 const UserEmailKey AuthContextKey = "user_email"
 
+// ExtractUserID extracts the user identifier from Context, custom headers, or query params.
+func ExtractUserID(r *http.Request) string {
+	if r == nil {
+		return "anonymous"
+	}
+	// 1. From context (set by auth middleware if token was verified)
+	if uid, ok := r.Context().Value(UserIDKey).(string); ok && strings.TrimSpace(uid) != "" {
+		return strings.TrimSpace(uid)
+	}
+	if email, ok := r.Context().Value(UserEmailKey).(string); ok && strings.TrimSpace(email) != "" {
+		return strings.TrimSpace(email)
+	}
+
+	// 2. From custom headers
+	if uid := strings.TrimSpace(r.Header.Get("X-User-Id")); uid != "" {
+		return uid
+	}
+	if email := strings.TrimSpace(r.Header.Get("X-User-Email")); email != "" {
+		return email
+	}
+
+	// 3. From query param if present
+	if uid := strings.TrimSpace(r.URL.Query().Get("user_id")); uid != "" {
+		return uid
+	}
+
+	return "anonymous"
+}
+
 type AuthMiddleware struct {
 	authClient *auth.Client
 }

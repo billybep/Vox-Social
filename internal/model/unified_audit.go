@@ -35,6 +35,7 @@ type AuditRunRequest struct {
 	Languages       AuditLanguagesConfig `json:"languages"`
 	Competitors     []CompetitorInput    `json:"competitors"`
 	CreditsDeducted int                  `json:"creditsDeducted"`
+	UserID          string               `json:"userId,omitempty"`
 }
 
 // AuditRunResponse is returned when an audit is started.

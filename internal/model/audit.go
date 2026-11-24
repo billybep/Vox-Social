@@ -10,6 +10,7 @@ import (
 type AnalyzeRequest struct {
 	ProfileURL string `json:"profile_url"`
 	URL        string `json:"url,omitempty"`
+	UserID     string `json:"user_id,omitempty"`
 }
 
 // AnalyzeResponse represents the expected JSON response
