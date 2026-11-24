@@ -53,6 +53,10 @@ func (h *SEOAuditHandler) HandleAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.TargetLocation == "" && req.Location != "" {
+		req.TargetLocation = req.Location
+	}
+
 	log.Printf("[SEO HANDLER] Audit request for domain: %s", req.Domain)
 
 	// Long-running: allow up to 150 seconds for the full pipeline
@@ -66,6 +70,9 @@ func (h *SEOAuditHandler) HandleAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if resp != nil && resp.Breakdown != nil {
+		resp.Categories = resp.Breakdown
+	}
 	jsonOK(w, resp)
 }
 
@@ -91,6 +98,9 @@ func (h *SEOAuditHandler) HandleGetAudit(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		jsonError(w, "Audit not found: "+err.Error(), http.StatusNotFound)
 		return
+	}
+	if resp != nil && resp.Breakdown != nil {
+		resp.Categories = resp.Breakdown
 	}
 	jsonOK(w, resp)
 }

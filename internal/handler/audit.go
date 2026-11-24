@@ -46,14 +46,18 @@ func (h *AuditHandler) HandleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for empty strings
-	req.ProfileURL = strings.TrimSpace(req.ProfileURL)
-	if req.ProfileURL == "" {
+	// Check for empty strings (support both profile_url and url)
+	targetURL := strings.TrimSpace(req.ProfileURL)
+	if targetURL == "" {
+		targetURL = strings.TrimSpace(req.URL)
+	}
+	if targetURL == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "profile_url is required"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "url or profile_url is required"})
 		return
 	}
+	req.ProfileURL = targetURL
 
 	// Use context.Background() so that client disconnection (e.g. Insomnia timeout)
 	// does NOT cancel the AI work. The 120s timeout is our own safety net.

@@ -75,6 +75,10 @@ func main() {
 	// ── GoHighLevel Webhook Handler ───────────────────────────────────────
 	ghlHandler := handler.NewGHLHandler(cfg.GHLWebhookURL)
 
+	// ── Unified Audit Workflow Service & Handler (Sprint 2) ───────────────
+	unifiedAuditSvc := service.NewUnifiedAuditService(seoSvc, aiSvc, storageSvc)
+	unifiedAuditHandler := handler.NewUnifiedAuditHandler(unifiedAuditSvc)
+
 	// ── Routes ────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
 
@@ -85,6 +89,11 @@ func main() {
 	mux.HandleFunc("/api/v1/seo/audit", corsMiddleware(seoHandler.HandleAudit, cfg.AllowedOrigins))
 	mux.HandleFunc("/api/v1/seo/audit/", corsMiddleware(seoHandler.HandleGetAudit, cfg.AllowedOrigins))
 	mux.HandleFunc("/api/v1/seo/domain/", corsMiddleware(seoHandler.HandleGetByDomain, cfg.AllowedOrigins))
+
+	// Unified Audit Workflow (Sprint 2: CreateAuditWizard, Progress Center, Results)
+	mux.HandleFunc("/api/v1/audits/run", corsMiddleware(unifiedAuditHandler.HandleRunAudit, cfg.AllowedOrigins))
+	mux.HandleFunc("/api/v1/audits/", corsMiddleware(unifiedAuditHandler.HandleAuditsRouter, cfg.AllowedOrigins))
+	mux.HandleFunc("/api/v1/audits", corsMiddleware(unifiedAuditHandler.HandleAuditsRouter, cfg.AllowedOrigins))
 
 	// Auth routes (protected by Firebase token verification)
 	mux.HandleFunc("/api/v1/auth/sync", corsMiddleware(authMiddleware.RequireAuth(authHandler.HandleAuthSync), cfg.AllowedOrigins))
@@ -129,17 +138,19 @@ func main() {
 	log.Println("Server exited properly")
 }
 
-// corsMiddleware unconditionally handles CORS checks for this public API.
+// corsMiddleware handles CORS headers and preflight checks for frontend integration.
 func corsMiddleware(next http.HandlerFunc, allowedOrigins string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "" {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-		} else {
+		if origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return

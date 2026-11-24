@@ -9,6 +9,7 @@ import (
 // AnalyzeRequest represents the incoming JSON payload for /api/v1/analyze
 type AnalyzeRequest struct {
 	ProfileURL string `json:"profile_url"`
+	URL        string `json:"url,omitempty"`
 }
 
 // AnalyzeResponse represents the expected JSON response

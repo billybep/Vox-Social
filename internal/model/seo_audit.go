@@ -16,6 +16,7 @@ type SEOAuditRequest struct {
 	BusinessName   string `json:"business_name,omitempty"`
 	TargetKeyword  string `json:"target_keyword,omitempty"`
 	TargetLocation string `json:"target_location,omitempty"`
+	Location       string `json:"location,omitempty"`
 	Phone          string `json:"phone,omitempty"`
 	GBPUrl         string `json:"gbp_url,omitempty"`
 }
@@ -33,6 +34,7 @@ type SEOAuditResponse struct {
 	GeneratedAt      time.Time          `json:"generated_at"`
 	MetricsSummary   MetricsSummary     `json:"metrics_summary"`
 	Breakdown        map[string]int     `json:"breakdown"`
+	Categories       map[string]int     `json:"categories,omitempty"`
 	ExecutiveSummary []string           `json:"executive_summary"`
 	ActionPlan       []ActionItem       `json:"action_plan"`
 	PageSnapshot     PageSnapshot       `json:"page_snapshot"`
